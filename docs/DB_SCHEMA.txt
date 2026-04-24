@@ -1,0 +1,184 @@
+Project llm_bench {
+  database_type: 'PostgreSQL'
+  Note: 'LLM speed benchmark — single-admin, public read-only leaderboard'
+}
+
+// ---------- Auth (single admin, minimal) ----------
+
+Table admins {
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar [unique, not null]
+  password_hash varchar [not null]
+  created_at timestamptz [default: `now()`]
+}
+
+Table sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  admin_id uuid [ref: > admins.id, not null]
+  token_hash varchar [unique, not null]
+  expires_at timestamptz [not null]
+  created_at timestamptz [default: `now()`]
+}
+
+// Encrypted tokens (HF token, registry creds, etc.). App-layer encrypted.
+Table secrets {
+  id bigserial [pk]
+  provider varchar [not null, note: 'huggingface | ollama_registry | ...']
+  label varchar [not null]
+  encrypted_value bytea [not null]
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (provider, label) [unique]
+  }
+}
+
+// ---------- Worker registry ----------
+
+Table workers {
+  id varchar [pk, note: 'worker_id set by the worker process']
+  secret_hash varchar [not null, note: 'argon2 hash of WORKER_SECRET for per-worker auth (future)']
+  gpu_model varchar
+  gpu_count int
+  vram_mb int
+  cpu varchar
+  ram_mb int
+  last_heartbeat timestamptz
+  registered_at timestamptz [default: `now()`]
+  status varchar [not null, default: 'online', note: 'online|offline|dead']
+}
+
+// ---------- Benchmark runs ----------
+
+Table benchmark_runs {
+  id uuid [pk, default: `gen_random_uuid()`]
+
+  // Lifecycle
+  status varchar [not null, note: 'queued|picked|starting_container|pulling_model|warming|evaluating|finalizing|cleanup|completed|failed|cancelled']
+  error_code varchar [note: 'oom|timeout|auth|model_not_found|pull_failed|worker_crash|...']
+  error_message text
+
+  // Configuration
+  provider varchar [not null, note: 'ollama | vllm | sglang | tgi']
+  model_id varchar [not null, note: 'e.g. meta-llama/Llama-3-8B-Instruct or llama3:8b']
+  model_source varchar [not null, note: 'huggingface | ollama']
+  config jsonb [not null, note: 'prompt_preset, concurrency_levels, max_tokens, temperature, seed, dtype, tp_size, ...']
+  hardware jsonb [note: 'snapshot at start: {gpu_model, gpu_count, vram_gb, cpu, ram_gb}']
+
+  // Worker & container tracking
+  worker_id varchar [ref: > workers.id, note: 'which registered worker picked this run']
+  inference_container_id varchar
+  inference_endpoint varchar  [note: 'e.g. http://llm-worker-abc:8000/v1']
+
+  // Denormalized summary metrics for leaderboard (computed on completion).
+  // These are what the public list view shows without joining benchmark_results.
+  avg_latency_ms       numeric
+  avg_throughput_tps   numeric   [note: 'aggregate output tokens/sec across all concurrency levels']
+  avg_ttft_ms          numeric
+  avg_tps              numeric   [note: 'per-request decode speed, averaged']
+
+  // Visibility
+  is_public boolean [default: true]
+
+  // Timestamps
+  queued_at    timestamptz [default: `now()`]
+  started_at   timestamptz
+  completed_at timestamptz
+  created_at   timestamptz [default: `now()`]
+
+  indexes {
+    (is_public, completed_at) [note: 'public leaderboard feed, DESC on completed_at']
+    status                    [note: 'dashboard polling of active runs']
+    (provider, model_id)      [note: 'filter leaderboard by model']
+    created_at
+  }
+}
+
+// Process log — one row per step transition, used for dashboard replay.
+// Separate from metrics: steps describe what's happening, metrics are measurements.
+Table benchmark_steps {
+  id bigserial [pk]
+  run_id uuid [ref: > benchmark_runs.id, not null]
+  step_name   varchar [not null, note: 'worker_pick|container_start|pull_model|warmup|evaluating|finalizing|cleanup']
+  step_status varchar [not null, note: 'started|progress|completed|failed|skipped']
+  progress_pct numeric(5,2)  [note: 'nullable; used by pull_model, evaluating']
+  message text
+  details jsonb   [note: 'arbitrary payload: pulled bytes, concurrency level, etc.']
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (run_id, created_at)
+  }
+}
+
+// Time-series metric samples collected during the run.
+// Written to Redis first (hot path), persisted here at cleanup.
+Table benchmark_metric_snapshots {
+  id bigserial [pk]
+  run_id uuid [ref: > benchmark_runs.id, not null]
+  t_offset_ms int [not null, note: 'milliseconds since started_at']
+  concurrency int [note: 'concurrency level active at this sample, if any']
+
+  // Latency / throughput (instantaneous at sample time)
+  latency_ms      numeric
+  throughput_tps  numeric  [note: 'aggregate output tokens/sec at this moment']
+  ttft_ms         numeric
+  tps             numeric  [note: 'per-request decode tps']
+
+  // Resource utilization
+  cpu_pct   numeric
+  gpu_pct   numeric
+  ram_mb    numeric
+  vram_mb   numeric
+
+  indexes {
+    (run_id, t_offset_ms)
+  }
+}
+
+// Aggregated results, one row per concurrency level measured.
+// This is the authoritative output you'd cite in comparisons.
+Table benchmark_results {
+  id bigserial [pk]
+  run_id uuid [ref: > benchmark_runs.id, not null]
+  concurrency int [not null]
+
+  requests_total    int [not null]
+  requests_success  int [not null]
+  requests_failed   int [not null]
+
+  ttft_ms_p50 numeric
+  ttft_ms_p95 numeric
+  ttft_ms_p99 numeric
+  tpot_ms_p50 numeric   [note: 'inter-token latency']
+  tpot_ms_p95 numeric
+
+  throughput_tps    numeric  [note: 'aggregate']
+  per_req_tps_p50   numeric  [note: 'per-request decode']
+  input_tokens_avg  numeric
+  output_tokens_avg numeric
+  duration_s        numeric
+
+  raw jsonb  [note: 'optional: full histograms / raw samples']
+
+  indexes {
+    (run_id, concurrency) [unique]
+  }
+}
+
+// Cached model metadata (HF / Ollama) to avoid re-fetching on every config page load.
+Table models_cache {
+  id bigserial [pk]
+  source          varchar [not null, note: 'huggingface | ollama']
+  model_id        varchar [not null]
+  params_billions numeric
+  quantization    varchar
+  size_bytes      bigint
+  context_length  int
+  metadata        jsonb
+  fetched_at      timestamptz [default: `now()`]
+
+  indexes {
+    (source, model_id) [unique]
+  }
+}
