@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
+from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db import get_db
 from src.models.worker import Worker
+from src.models.run import BenchmarkRun
 from src.auth.utils import hash_password
 from src.schemas.workers import WorkerRegisterRequest, WorkerRegisterResponse
 from src.redis_client import get_redis, key_worker_heartbeat, key_worker_info
@@ -49,6 +52,49 @@ async def register_worker(
         "ram_mb": body.ram_mb or 0,
     })
     return WorkerRegisterResponse(redis_url=settings.redis_url, heartbeat_interval_s=5)
+
+class RunStatusUpdate(BaseModel):
+    status: str
+    worker_id: Optional[str] = None
+    avg_latency_ms: Optional[float] = None
+    avg_throughput_tps: Optional[float] = None
+    avg_ttft_ms: Optional[float] = None
+    avg_tps: Optional[float] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+@router.patch("/runs/{run_id}/status")
+async def update_run_status(
+    run_id: str,
+    body: RunStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_worker_secret),
+):
+    result = await db.execute(select(BenchmarkRun).where(BenchmarkRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    run.status = body.status
+    if body.worker_id:
+        run.worker_id = body.worker_id
+    if body.status == "picked" and not run.started_at:
+        run.started_at = datetime.now(timezone.utc)
+    if body.status == "completed":
+        run.completed_at = datetime.now(timezone.utc)
+        if body.avg_latency_ms is not None:
+            run.avg_latency_ms = body.avg_latency_ms
+        if body.avg_throughput_tps is not None:
+            run.avg_throughput_tps = body.avg_throughput_tps
+        if body.avg_ttft_ms is not None:
+            run.avg_ttft_ms = body.avg_ttft_ms
+        if body.avg_tps is not None:
+            run.avg_tps = body.avg_tps
+    if body.status == "failed":
+        run.completed_at = datetime.now(timezone.utc)
+        run.error_code = body.error_code
+        run.error_message = body.error_message
+    await db.commit()
+    return {"ok": True}
 
 @router.post("/workers/{worker_id}/heartbeat")
 async def worker_heartbeat(

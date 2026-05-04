@@ -3,9 +3,12 @@ import socket
 import structlog
 import httpx
 import redis.asyncio as aioredis
+from src.runner import run_benchmark
 from src.config import API_URL, WORKER_SECRET, WORKER_ID
 
+
 log = structlog.get_logger()
+
 
 async def register() -> str:
     async with httpx.AsyncClient() as client:
@@ -17,6 +20,7 @@ async def register() -> str:
         r.raise_for_status()
         data = r.json()
         return data["redis_url"]
+
 
 async def heartbeat_loop():
     async with httpx.AsyncClient() as client:
@@ -30,15 +34,18 @@ async def heartbeat_loop():
                 log.warning("heartbeat_failed", error=str(e))
             await asyncio.sleep(5)
 
+
 async def main():
+    # Register worker in master
     log.info("worker_starting", worker_id=WORKER_ID)
     redis_url = await register()
     log.info("registered", redis_url=redis_url)
     r = aioredis.from_url(redis_url, decode_responses=True)
 
+    # Start heartbeat loop
     asyncio.create_task(heartbeat_loop())
 
-    from src.runner import run_benchmark
+    # Loop to pick benchmark runs from Redis queue and execute them
     while True:
         run_id = await r.brpoplpush("queue:benchmarks", "queue:benchmarks:processing", timeout=0)
         if run_id:
@@ -49,6 +56,7 @@ async def main():
                 log.error("run_failed", run_id=run_id, error=str(e))
             finally:
                 await r.lrem("queue:benchmarks:processing", 1, run_id)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

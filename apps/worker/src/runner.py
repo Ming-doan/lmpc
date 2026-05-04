@@ -1,11 +1,26 @@
 import asyncio
+import statistics
 import time
 import structlog
+import httpx
 import redis.asyncio as aioredis
 from src.metrics.publisher import MetricsPublisher
 from src.providers.stub import StubProvider
 
 log = structlog.get_logger()
+
+
+async def update_run_status(api_url: str, secret: str, run_id: str, **kwargs):
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.patch(
+                f"{api_url}/internal/runs/{run_id}/status",
+                json=kwargs,
+                headers={"x-worker-secret": secret},
+                timeout=10,
+            )
+    except Exception as e:
+        log.warning("run_status_update_failed", run_id=run_id, error=str(e))
 
 
 async def run_benchmark(run_id: str, r: aioredis.Redis, api_url: str, secret: str, worker_id: str):
@@ -25,6 +40,7 @@ async def run_benchmark(run_id: str, r: aioredis.Redis, api_url: str, secret: st
         # picked
         await pub.emit_status("picked")
         await pub.emit_step("worker_pick", "completed", message=f"Picked by {worker_id}")
+        await update_run_status(api_url, secret, run_id, status="picked", worker_id=worker_id)
 
         if await check_cancel():
             await pub.emit_status("cleanup")
@@ -133,10 +149,26 @@ async def run_benchmark(run_id: str, r: aioredis.Redis, api_url: str, secret: st
         await pub.emit_step("cleanup", "completed")
         await pub.emit_status("completed")
 
+        # Compute aggregated metrics from all_results
+        all_samples = [s for samples in all_results.values() for s in samples]
+        avg_latency = statistics.mean(s["latency_ms"] for s in all_samples) if all_samples else None
+        avg_tps = statistics.mean(s["tps"] for s in all_samples) if all_samples else None
+        avg_ttft = statistics.mean(s["ttft_ms"] for s in all_samples) if all_samples else None
+        await update_run_status(
+            api_url, secret, run_id,
+            status="completed",
+            worker_id=worker_id,
+            avg_latency_ms=avg_latency,
+            avg_tps=avg_tps,
+            avg_ttft_ms=avg_ttft,
+            avg_throughput_tps=avg_tps,
+        )
+
     except Exception as e:
         log.error("run_error", run_id=run_id, step=current_step, error=str(e))
         await pub.emit_step(current_step, "failed", message=str(e))
         await pub.emit_status("failed")
+        await update_run_status(api_url, secret, run_id, status="failed", error_message=str(e), worker_id=worker_id)
         try:
             await pub.emit_step("cleanup", "started")
             await provider.stop()

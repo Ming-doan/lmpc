@@ -3,6 +3,7 @@ import json
 from collections.abc import AsyncGenerator
 from src.redis_client import get_redis, key_run_steps, key_run_metrics_series, key_events_run
 
+
 async def run_event_stream(run_id: str) -> AsyncGenerator[str, None]:
     r = await get_redis()
     # Replay historical steps

@@ -9,14 +9,25 @@ from src.schemas.auth import LoginRequest
 from src.config import settings
 from src.auth.deps import get_current_admin
 
+
 router = APIRouter(prefix="/auth")
 
+
 @router.post("/login")
-async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(
+    body: LoginRequest, 
+    response: Response, 
+    db: AsyncSession = Depends(get_db)
+):
+    # Find at least one admin
     result = await db.execute(select(Admin).where(Admin.email == body.email))
     admin = result.scalar_one_or_none()
+
+    # Verify admin password
     if not admin or not verify_password(body.password, admin.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Generate session token and store in DB
     token = generate_token()
     session = AdminSession(
         admin_id=admin.id,
@@ -25,13 +36,17 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     )
     db.add(session)
     await db.commit()
+
+    # Set session cookie
     response.set_cookie(settings.session_cookie_name, token, httponly=True, samesite="lax")
     return {"ok": True}
+
 
 @router.post("/logout")
 async def logout(
     response: Response,
     _=Depends(get_current_admin),
 ):
+    # Clear session cookie
     response.delete_cookie(settings.session_cookie_name)
     return {"ok": True}
