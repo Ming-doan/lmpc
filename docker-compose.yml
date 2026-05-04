@@ -58,6 +58,7 @@ services:
     environment:
       API_URL: http://api:8000
       DOCKER_HOST: unix:///var/run/docker.sock
+      WORKER_SECRET: ${WORKER_SECRET}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
