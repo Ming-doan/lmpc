@@ -48,7 +48,7 @@ async def register_worker(
         "cpu": body.cpu or "",
         "ram_mb": body.ram_mb or 0,
     })
-    return WorkerRegisterResponse(redis_url=settings.redis_url)
+    return WorkerRegisterResponse(redis_url=settings.redis_url, heartbeat_interval_s=5)
 
 @router.post("/workers/{worker_id}/heartbeat")
 async def worker_heartbeat(

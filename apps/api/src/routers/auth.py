@@ -7,6 +7,7 @@ from src.models.admin import Admin, Session as AdminSession
 from src.auth.utils import verify_password, generate_token, hash_token
 from src.schemas.auth import LoginRequest
 from src.config import settings
+from src.auth.deps import get_current_admin
 
 router = APIRouter(prefix="/auth")
 
@@ -28,6 +29,9 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     return {"ok": True}
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    _=Depends(get_current_admin),
+):
     response.delete_cookie(settings.session_cookie_name)
     return {"ok": True}
