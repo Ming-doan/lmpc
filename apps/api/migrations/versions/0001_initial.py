@@ -127,6 +127,7 @@ def upgrade() -> None:
         sa.Column("ttft_ms_p99", sa.Numeric(), nullable=True),
         sa.Column("tpot_ms_p50", sa.Numeric(), nullable=True),
         sa.Column("tpot_ms_p95", sa.Numeric(), nullable=True),
+        sa.Column("tpot_ms_p99", sa.Numeric(), nullable=True),
         sa.Column("throughput_tps", sa.Numeric(), nullable=True),
         sa.Column("per_req_tps_p50", sa.Numeric(), nullable=True),
         sa.Column("input_tokens_avg", sa.Numeric(), nullable=True),

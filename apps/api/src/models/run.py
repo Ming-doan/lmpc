@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+import sqlalchemy as sa
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, Text, Boolean, Integer, Numeric, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -25,10 +26,10 @@ class BenchmarkRun(Base):
     avg_ttft_ms: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     avg_tps: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
-    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class BenchmarkStep(Base):
     __tablename__ = "benchmark_steps"
@@ -39,7 +40,7 @@ class BenchmarkStep(Base):
     progress_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class BenchmarkMetricSnapshot(Base):
     __tablename__ = "benchmark_metric_snapshots"
@@ -58,6 +59,7 @@ class BenchmarkMetricSnapshot(Base):
 
 class BenchmarkResult(Base):
     __tablename__ = "benchmark_results"
+    __table_args__ = (sa.UniqueConstraint("run_id", "concurrency"),)
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("benchmark_runs.id"), nullable=False)
     concurrency: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -69,6 +71,7 @@ class BenchmarkResult(Base):
     ttft_ms_p99: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     tpot_ms_p50: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     tpot_ms_p95: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
+    tpot_ms_p99: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     throughput_tps: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     per_req_tps_p50: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     input_tokens_avg: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)

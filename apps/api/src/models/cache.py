@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import String, Integer, BigInteger, Numeric, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,4 +15,4 @@ class ModelsCache(Base):
     size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     context_length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
