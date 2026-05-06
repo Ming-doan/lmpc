@@ -1,86 +1,33 @@
-networks:
-  llmbench_net:
-    driver: bridge
-
 services:
-  postgres:
-    image: postgres:16-alpine
+  db:
+    image: timescale/timescaledb:latest-pg16
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-llmbench}
-      POSTGRES_USER: ${POSTGRES_USER:-llmbench}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: lmpc
+      POSTGRES_DB: lmpc
+    volumes:
+      - db-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llmbench}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - llmbench_net
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    networks:
-      - llmbench_net
-
-  api:
-    build: ./apps/api
-    env_file: .env
+  backend:
+    build: ./backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-llmbench}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-llmbench}
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://postgres:lmpc@db:5432/lmpc
+      APP_TOKEN: ${APP_TOKEN:-dev-token}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+      LOG_LEVEL: INFO
     ports:
-      - "8000:8000"
+      - "8080:8080"
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - llmbench_net
-
-  worker:
-    build: ./apps/worker
-    env_file: .env
-    environment:
-      API_URL: http://api:8000
-      DOCKER_HOST: unix:///var/run/docker.sock
-      WORKER_SECRET: ${WORKER_SECRET:?WORKER_SECRET must be set in .env}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - llmbench_net
-
-  web:
-    build: ./apps/web
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      INTERNAL_API_URL: http://api:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - llmbench_net
+    restart: unless-stopped
 
 volumes:
-  pgdata:
+  db-data:

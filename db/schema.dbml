@@ -1,0 +1,225 @@
+Project lmpc {
+  database_type: 'PostgreSQL'
+  Note: 'Requires extensions: timescaledb, pgcrypto'
+}
+
+// ─── Identity & catalog ──────────────────────────────────────────
+
+Table workers {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(255) [not null, unique]
+  hostname varchar(255)
+  status varchar(20) [not null, default: 'pending', note: 'pending|online|offline|busy|disabled']
+  approved boolean [not null, default: false]
+  api_token_hash varchar(255) [not null, note: 'sha256 of bearer token']
+  specs jsonb [not null, note: '{cpu, cpu_cores, ram_gb, gpu:[{name,vram_gb,driver,cuda}], os, docker_version}']
+  capabilities jsonb [note: '{platforms:[ollama,vllm,...], has_gpu:true}']
+  registered_at timestamptz [not null, default: `now()`]
+  last_heartbeat_at timestamptz
+  Indexes { 
+    status
+    last_heartbeat_at 
+  }
+}
+
+Table platforms {
+  id serial [pk]
+  name varchar(50) [not null, unique]
+  display_name varchar(100)
+  adapter_class varchar(100) [note: 'OllamaAdapter, VllmAdapter, ...']
+  default_image varchar(255)
+  default_port int
+  default_args jsonb
+  description text
+}
+
+Table models {
+  id serial [pk]
+  name varchar(255) [not null, unique]
+  hf_id varchar(255)
+  size_b decimal(6,2)
+  quantization varchar(30)
+  context_length int
+  metadata jsonb
+}
+
+Table prompt_sets {
+  id serial [pk]
+  name varchar(255) [unique, not null]
+  description text
+  prompts jsonb [not null, note: 'array of {id, prompt, max_new_tokens, expected_tokens?}']
+  version int [default: 1]
+  created_at timestamptz [default: `now()`]
+}
+
+// ─── Queue & runs ────────────────────────────────────────────────
+
+Table run_configs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(255) [not null]
+  platform_id int [ref: > platforms.id, not null]
+  model_id int [ref: > models.id, not null]
+  prompt_set_id int [ref: > prompt_sets.id, not null]
+  platform_args jsonb [note: 'override flags for this platform']
+  benchmark_args jsonb [not null, note: '{concurrency, num_requests, max_tokens, warmup_requests, iterations}']
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+}
+
+Table benchmark_runs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  config_id uuid [ref: > run_configs.id, not null]
+  worker_id uuid [ref: > workers.id]
+  iteration int [default: 1, note: 'which repeat of N']
+  status varchar(20) [not null, default: 'queued',
+    note: 'queued|claimed|running|completed|failed|cancelled|timeout']
+  priority int [default: 0]
+  attempt int [default: 0]
+  max_attempts int [default: 1]
+
+  queued_at timestamptz [not null, default: `now()`]
+  claimed_at timestamptz
+  leased_until timestamptz [note: 'janitor reclaims when expired without heartbeat']
+  started_at timestamptz
+  completed_at timestamptz
+
+  // Reproducibility snapshot
+  image_digest varchar(128)
+  platform_version varchar(50)
+  resolved_args jsonb
+  worker_specs_snapshot jsonb
+
+  container_id varchar(64)
+  error_code varchar(50)
+  error_message text
+
+  Indexes {
+    (status, priority, queued_at) [name: 'idx_queue_pickup']
+    (worker_id, status)
+    config_id
+  }
+}
+
+// ─── Results: aggregated + per-request ───────────────────────────
+
+Table benchmark_results {
+  run_id uuid [pk, ref: > benchmark_runs.id]
+
+  // Latency (ms)
+  ttft_p50 numeric(10,2)
+  ttft_p90 numeric(10,2)
+  ttft_p95 numeric(10,2)
+  ttft_p99 numeric(10,2)
+  ttft_mean numeric(10,2)
+  ttft_stddev numeric(10,2)
+
+  tpot_p50 numeric(10,2)
+  tpot_p99 numeric(10,2)
+  tpot_mean numeric(10,2)
+
+  e2e_p50 numeric(10,2)
+  e2e_p99 numeric(10,2)
+  e2e_mean numeric(10,2)
+
+  // Throughput
+  output_tps_mean numeric(10,2) [note: 'output tokens / sec, system-wide']
+  output_tps_per_user numeric(10,2)
+  total_tps_mean numeric(10,2)
+  requests_per_sec numeric(10,2)
+  goodput_rps numeric(10,2) [note: 'requests meeting SLO (e.g. ttft<200ms & tpot<50ms)']
+
+  // Counts
+  total_requests int
+  successful_requests int
+  failed_requests int
+  total_input_tokens bigint
+  total_output_tokens bigint
+
+  // Resource peaks & averages
+  peak_gpu_mem_mb int
+  avg_gpu_util_pct numeric(5,2)
+  peak_gpu_util_pct numeric(5,2)
+  peak_ram_mb int
+  avg_cpu_pct numeric(5,2)
+  avg_power_watts numeric(7,2)
+  energy_joules numeric(12,2) [note: 'integrated over benchmark duration']
+
+  // Cold start
+  container_start_ms int
+  model_load_ms int
+  first_ready_ms int [note: 'container_start + model_load + warmup']
+
+  // Efficiency
+  tokens_per_joule numeric(10,4)
+  tokens_per_gb_vram numeric(10,4)
+
+  computed_at timestamptz [default: `now()`]
+}
+
+Table request_traces {
+  id bigserial [pk]
+  run_id uuid [ref: > benchmark_runs.id, not null]
+  request_idx int
+  started_at timestamptz [not null]
+  ttft_ms numeric(10,2)
+  tpot_ms numeric(10,2)
+  e2e_ms numeric(10,2)
+  queue_wait_ms numeric(10,2)
+  input_tokens int
+  output_tokens int
+  success boolean
+  http_status int
+  error text
+  Indexes { 
+    (run_id, started_at)
+    started_at 
+  }
+  Note: 'TimescaleDB hypertable on started_at, chunk_time_interval=1 day'
+}
+
+// ─── Time-series system metrics ──────────────────────────────────
+
+Table metric_samples {
+  time timestamptz [not null]
+  run_id uuid [ref: > benchmark_runs.id, not null]
+  worker_id uuid [ref: > workers.id, not null]
+
+  cpu_pct numeric(5,2)
+  ram_used_mb int
+  ram_pct numeric(5,2)
+
+  gpu_index smallint [default: 0]
+  gpu_util_pct smallint
+  gpu_mem_used_mb int
+  gpu_mem_total_mb int
+  gpu_temp_c smallint
+  gpu_power_watts numeric(7,2)
+  gpu_sm_clock_mhz int
+
+  disk_read_mbps numeric(8,2)
+  disk_write_mbps numeric(8,2)
+  net_rx_mbps numeric(8,2)
+  net_tx_mbps numeric(8,2)
+
+  Indexes { 
+    (run_id, time)
+    (worker_id, time) 
+  }
+  Note: 'TimescaleDB hypertable on time, chunk_time_interval=1 day, retention=30d'
+}
+
+// ─── Ops ─────────────────────────────────────────────────────────
+
+Table audit_logs {
+  id bigserial [pk]
+  time timestamptz [default: `now()`]
+  actor varchar(255)
+  action varchar(100)
+  target_type varchar(50)
+  target_id varchar(64)
+  payload jsonb
+  Indexes { 
+    (target_type, target_id)
+    time 
+  }
+}
