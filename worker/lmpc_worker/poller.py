@@ -51,8 +51,16 @@ async def execute_job(job: dict[str, Any], client: BackendClient) -> dict:
     run_id: str = job["run_id"]
     worker_id: str = job.get("worker_id", "")
     platform_name: str = job.get("platform", "mock")
-    model: dict = job.get("model", {})
-    prompts: list[str] = [p.get("prompt", "") for p in job.get("prompt_set", [])]
+    # poll payload has flat model_name/model_hf_id, not a nested dict
+    model: dict = {
+        "name": job.get("model_name", ""),
+        "hf_id": job.get("model_hf_id", ""),
+    }
+    prompt_set_raw = job.get("prompt_set", [])
+    prompts: list[str] = [
+        p.get("prompt", "") if isinstance(p, dict) else str(p)
+        for p in prompt_set_raw
+    ]
     benchmark_args: dict = job.get("benchmark_args", {})
     platform_args: dict = job.get("platform_args", {})
 

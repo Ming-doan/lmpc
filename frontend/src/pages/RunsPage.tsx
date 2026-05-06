@@ -111,8 +111,8 @@ export function RunsPage() {
                         {selected.has(run.id) && <span className="text-xs">✓</span>}
                       </span>
                     </td>
-                    <td className="py-2.5 font-medium">{run.config?.name ?? run.config_id.slice(0, 8)}</td>
-                    <td className="py-2.5 text-xs text-gray-500">{run.config?.model_id ?? '—'}</td>
+                    <td className="py-2.5 font-medium">{run.config?.platform_name ?? run.config_id.slice(0, 8)}</td>
+                    <td className="py-2.5 text-xs text-gray-500">{run.config?.model_name ?? '—'}</td>
                     <td className="py-2.5"><StatusBadge status={run.status} /></td>
                     <td className="py-2.5 text-xs text-gray-500">{duration(run)}</td>
                     <td className="py-2.5 text-xs text-gray-500">#{run.iteration}</td>

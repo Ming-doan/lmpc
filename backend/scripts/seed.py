@@ -17,6 +17,19 @@ PLATFORMS = [
     {"name": "triton",   "display_name": "Triton-LLM",    "adapter_class": "TritonAdapter",  "default_image": "nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3",              "default_port": 8000},
 ]
 
+MODELS = [
+    {"name": "Qwen2.5-0.5B-Instruct",  "hf_id": "Qwen/Qwen2.5-0.5B-Instruct",  "size_b": 0.5,  "quantization": None,   "context_length": 32768},
+    {"name": "Qwen2.5-1.5B-Instruct",  "hf_id": "Qwen/Qwen2.5-1.5B-Instruct",  "size_b": 1.5,  "quantization": None,   "context_length": 32768},
+    {"name": "Qwen2.5-7B-Instruct",    "hf_id": "Qwen/Qwen2.5-7B-Instruct",    "size_b": 7.0,  "quantization": None,   "context_length": 32768},
+    {"name": "Qwen2.5-14B-Instruct",   "hf_id": "Qwen/Qwen2.5-14B-Instruct",   "size_b": 14.0, "quantization": None,   "context_length": 32768},
+    {"name": "Llama-3.2-1B-Instruct",  "hf_id": "meta-llama/Llama-3.2-1B-Instruct",  "size_b": 1.0,  "quantization": None, "context_length": 131072},
+    {"name": "Llama-3.2-3B-Instruct",  "hf_id": "meta-llama/Llama-3.2-3B-Instruct",  "size_b": 3.0,  "quantization": None, "context_length": 131072},
+    {"name": "Llama-3.1-8B-Instruct",  "hf_id": "meta-llama/Llama-3.1-8B-Instruct",  "size_b": 8.0,  "quantization": None, "context_length": 131072},
+    {"name": "Mistral-7B-Instruct-v0.3","hf_id": "mistralai/Mistral-7B-Instruct-v0.3","size_b": 7.0, "quantization": None, "context_length": 32768},
+    {"name": "Phi-3.5-mini-instruct",   "hf_id": "microsoft/Phi-3.5-mini-instruct",   "size_b": 3.8, "quantization": None,  "context_length": 131072},
+    {"name": "gemma-2-2b-it",           "hf_id": "google/gemma-2-2b-it",               "size_b": 2.0, "quantization": None,  "context_length": 8192},
+]
+
 DEFAULT_PROMPTS = [
     # Short Q&A
     {"id": "qa_01", "prompt": "What is the capital of France?",                                                      "max_new_tokens": 50},
@@ -60,6 +73,18 @@ async def seed() -> None:
                     """
                 ),
                 p,
+            )
+
+        for m in MODELS:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO models (name, hf_id, size_b, quantization, context_length)
+                    VALUES (:name, :hf_id, :size_b, :quantization, :context_length)
+                    ON CONFLICT (name) DO NOTHING
+                    """
+                ),
+                m,
             )
 
         import json

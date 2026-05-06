@@ -13,6 +13,15 @@ class CreateRunsRequest(BaseModel):
     priority: int = 0
 
 
+class ConfigSummary(BaseModel):
+    id: uuid.UUID
+    name: str
+    platform_name: str | None = None
+    model_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class RunOut(BaseModel):
     id: uuid.UUID
     config_id: uuid.UUID
@@ -29,6 +38,7 @@ class RunOut(BaseModel):
     platform_version: str | None
     error_code: str | None
     error_message: str | None
+    config: ConfigSummary | None = None
 
     model_config = {"from_attributes": True}
 
@@ -41,41 +51,47 @@ class ResultsSubmission(BaseModel):
 
 class BenchmarkResultOut(BaseModel):
     run_id: uuid.UUID
-    ttft_p50: float | None
-    ttft_p90: float | None
-    ttft_p95: float | None
-    ttft_p99: float | None
-    ttft_mean: float | None
-    ttft_stddev: float | None
-    tpot_p50: float | None
-    tpot_p99: float | None
-    tpot_mean: float | None
-    e2e_p50: float | None
-    e2e_p99: float | None
-    e2e_mean: float | None
-    output_tps_mean: float | None
-    output_tps_per_user: float | None
-    total_tps_mean: float | None
-    requests_per_sec: float | None
-    goodput_rps: float | None
-    total_requests: int | None
-    successful_requests: int | None
-    failed_requests: int | None
-    total_input_tokens: int | None
-    total_output_tokens: int | None
-    peak_gpu_mem_mb: int | None
-    avg_gpu_util_pct: float | None
-    peak_gpu_util_pct: float | None
-    peak_ram_mb: int | None
-    avg_cpu_pct: float | None
-    avg_power_watts: float | None
-    energy_joules: float | None
-    container_start_ms: int | None
-    model_load_ms: int | None
-    first_ready_ms: int | None
-    tokens_per_joule: float | None
-    tokens_per_gb_vram: float | None
-    computed_at: datetime
+    ttft_p50: float | None = None
+    ttft_p90: float | None = None
+    ttft_p95: float | None = None
+    ttft_p99: float | None = None
+    ttft_mean: float | None = None
+    ttft_stddev: float | None = None
+    tpot_p50: float | None = None
+    tpot_p90: float | None = None
+    tpot_p95: float | None = None
+    tpot_p99: float | None = None
+    tpot_mean: float | None = None
+    tpot_stddev: float | None = None
+    e2e_p50: float | None = None
+    e2e_p90: float | None = None
+    e2e_p95: float | None = None
+    e2e_p99: float | None = None
+    e2e_mean: float | None = None
+    e2e_stddev: float | None = None
+    output_tps_mean: float | None = None
+    output_tps_per_user: float | None = None
+    total_tps_mean: float | None = None
+    requests_per_sec: float | None = None
+    goodput_rps: float | None = None
+    total_requests: int | None = None
+    successful_requests: int | None = None
+    failed_requests: int | None = None
+    total_input_tokens: int | None = None
+    total_output_tokens: int | None = None
+    peak_gpu_mem_mb: int | None = None
+    avg_gpu_util_pct: float | None = None
+    peak_gpu_util_pct: float | None = None
+    peak_ram_mb: int | None = None
+    avg_cpu_pct: float | None = None
+    avg_power_watts: float | None = None
+    energy_joules: float | None = None
+    container_start_ms: float | None = None
+    model_load_ms: float | None = None
+    first_ready_ms: float | None = None
+    tokens_per_joule: float | None = None
+    tokens_per_gb_vram: float | None = None
+    computed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

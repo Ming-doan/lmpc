@@ -114,6 +114,13 @@ export interface CreateConfigBody {
   benchmark_args: Record<string, unknown>
 }
 
+export interface RunConfig {
+  id: string
+  name: string
+  platform_name: string | null
+  model_name: string | null
+}
+
 export interface Run {
   id: string
   config_id: string
@@ -125,7 +132,7 @@ export interface Run {
   completed_at: string | null
   worker_id: string | null
   error_message: string | null
-  config?: Config
+  config?: RunConfig
 }
 
 export interface RunResult {

@@ -4,7 +4,7 @@ services:
     environment:
       LMPC_API_URL: ${LMPC_API_URL}
       LMPC_WORKER_NAME: ${HOSTNAME:-worker}
-      LMPC_PLATFORMS: ${LMPC_PLATFORMS:-stub}
+      LMPC_PLATFORMS: ${LMPC_PLATFORMS:-mock,ollama,vllm}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.cache/huggingface:/root/.cache/huggingface
