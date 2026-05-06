@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-surface font-sans text-secondary antialiased;
+    margin: 0;
+  }
+
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 rounded bg-btn px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center gap-2 rounded border border-btn bg-transparent px-4 py-2 text-sm font-semibold text-btn transition-colors hover:bg-btn hover:text-white disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40;
+  }
+
+  .card {
+    @apply rounded bg-white/80 backdrop-blur-sm border border-black/5 p-5;
+  }
+
+  .input {
+    @apply w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none;
+  }
+
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold;
+  }
+
+  .badge-completed { @apply bg-green-100 text-green-800; }
+  .badge-running   { @apply bg-yellow-100 text-yellow-800; }
+  .badge-queued    { @apply bg-indigo-100 text-indigo-800; }
+  .badge-claimed   { @apply bg-blue-100 text-blue-800; }
+  .badge-failed    { @apply bg-red-100 text-red-800; }
+  .badge-timeout   { @apply bg-orange-100 text-orange-800; }
+  .badge-cancelled { @apply bg-gray-100 text-gray-600; }
+  .badge-pending   { @apply bg-gray-100 text-gray-600; }
+  .badge-online    { @apply bg-green-100 text-green-800; }
+  .badge-offline   { @apply bg-gray-100 text-gray-500; }
+  .badge-busy      { @apply bg-yellow-100 text-yellow-800; }
+  .badge-disabled  { @apply bg-red-100 text-red-700; }
+}
